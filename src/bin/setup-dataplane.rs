@@ -1,6 +1,7 @@
-use std::env;
 use anyhow::{Context, Error};
 use firewall_controller::pod::Pod;
+use std::env;
+use std::process::Command;
 
 fn main() -> Result<(), Error> {
     let mut args: Vec<String> = env::args().collect();
@@ -9,9 +10,14 @@ fn main() -> Result<(), Error> {
 
     let pod_name = format!("dp-{dp_name}");
     let pod = Pod::ensure_exists(&pod_name).context("Failed to ensure pod exists")?;
-    pod.ensure_is_running().context("Failed to ensure pod is running")?;
-    let netstate = pod.get_network_state().context("Failed to get pod network state")?;
-    println!("{netstate:?}");
+    pod.ensure_is_running()
+        .context("Failed to ensure pod is running")?;
+
+    let netns = pod.get_infra_container()?.get_netns()?;
+    let out = netns
+        .run(|| Command::new("ip").arg("addr").output().unwrap().stdout)
+        .unwrap();
+    println!("{}", String::from_utf8(out).unwrap());
 
     Ok(())
 }

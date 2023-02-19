@@ -1,12 +1,15 @@
-use std::process::Command;
+use crate::container::Container;
 use anyhow::{Context, Error};
 use nispor::NetState;
 use serde::Deserialize;
+use std::process::Command;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct PodInspection {
     state: String,
+    #[serde(rename = "InfraContainerID")]
+    infra_container_id: String,
 }
 
 impl PodInspection {
@@ -33,7 +36,7 @@ impl Pod {
     pub fn get(name: &str) -> Result<Pod, Error> {
         if Self::exists(name).context("Failed to check if pod exists")? {
             Ok(Pod {
-                name: String::from(name)
+                name: String::from(name),
             })
         } else {
             Err(Error::msg(format!("Pod {} doesn't exist", name)))
@@ -53,14 +56,15 @@ impl Pod {
             if !output.status.success() {
                 return Err(Error::msg(
                     String::from_utf8(output.stderr).context("Failed to load stderr to string")?,
-                ))
+                ));
             }
         };
         Self::get(name)
     }
 
     pub fn ensure_is_running(&self) -> Result<(), Error> {
-        if self.inspect()
+        if self
+            .inspect()
             .context("Failed to inspect pod")?
             .is_running()
         {
@@ -107,9 +111,16 @@ impl Pod {
             Err(Error::msg(String::from_utf8(output.stderr)?)
                 .context(format!("podman run --pod={} nispor failed", self.name)))
         } else {
-            let netstate: NetState = serde_yaml::from_slice(&output.stdout).context("Failed to decode YAML to NetState")?;
+            let netstate: NetState = serde_yaml::from_slice(&output.stdout)
+                .context("Failed to decode YAML to NetState")?;
             Ok(netstate)
         }
     }
 
+    pub fn get_infra_container(&self) -> Result<Container, Error> {
+        let pod_inspection = self.inspect().context("Failed to inspect pod")?;
+        let container = Container::get(&pod_inspection.infra_container_id)
+            .context("Failed to get infra container")?;
+        Ok(container)
+    }
 }
