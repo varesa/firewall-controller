@@ -1,9 +1,7 @@
 use anyhow::{Context, Error};
 use std::path::PathBuf;
+use firewall_controller::dataplane::{Dataplane, DataplaneList};
 
-use dataplane::{Dataplane, DataplaneList};
-
-mod dataplane;
 
 fn main() -> Result<(), Error> {
     Dataplane::create_template_service().context("Failed to create dataplane service template")?;
