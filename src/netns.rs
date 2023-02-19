@@ -1,4 +1,3 @@
-use anyhow::Error;
 use nix::sched::{setns, CloneFlags};
 use std::fs::File;
 use std::os::fd::AsRawFd;
@@ -12,7 +11,7 @@ impl NetworkNamespace {
         Self { file }
     }
 
-    pub fn run<F, T>(&self, func: F) -> Result<T, Error>
+    pub fn run<F, T>(&self, func: F) -> T
     where
         F: FnOnce() -> T,
         F: Send + 'static,
@@ -23,7 +22,6 @@ impl NetworkNamespace {
             setns(fd, CloneFlags::CLONE_NEWNET).expect("Failed to switch netns");
             func()
         });
-        let result = thread.join().expect("Failed to join thread");
-        Ok(result)
+        thread.join().expect("Failed to join thread")
     }
 }

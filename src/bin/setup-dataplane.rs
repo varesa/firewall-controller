@@ -14,10 +14,11 @@ fn main() -> Result<(), Error> {
         .context("Failed to ensure pod is running")?;
 
     let netns = pod.get_infra_container()?.get_netns()?;
-    let out = netns
-        .run(|| Command::new("ip").arg("addr").output().unwrap().stdout)
-        .unwrap();
+    let out = netns.run(|| Command::new("ip").arg("addr").output().unwrap().stdout);
     println!("{}", String::from_utf8(out).unwrap());
+
+    let netstate = pod.get_network_state().unwrap();
+    dbg!(netstate);
 
     Ok(())
 }

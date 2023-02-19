@@ -100,21 +100,15 @@ impl Pod {
     }
 
     pub fn get_network_state(&self) -> Result<NetState, Error> {
-        let output = Command::new("podman")
-            .arg("run")
-            .arg("--rm")
-            .arg("-i")
-            .arg(format!("--pod={}", self.name))
-            .arg("nispor")
-            .output()?;
-        if !output.status.success() {
-            Err(Error::msg(String::from_utf8(output.stderr)?)
-                .context(format!("podman run --pod={} nispor failed", self.name)))
-        } else {
-            let netstate: NetState = serde_yaml::from_slice(&output.stdout)
-                .context("Failed to decode YAML to NetState")?;
-            Ok(netstate)
-        }
+        let netns = self
+            .get_infra_container()
+            .context("Failed to get infra container")?
+            .get_netns()
+            .context("Failed to get network ns")?;
+        let netstate = netns
+            .run(NetState::retrieve)
+            .context("Failed to retrieve NetState")?;
+        Ok(netstate)
     }
 
     pub fn get_infra_container(&self) -> Result<Container, Error> {
