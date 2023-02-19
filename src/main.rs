@@ -1,7 +1,7 @@
-use std::fs::File;
-use anyhow::{Error, Context};
+use anyhow::{Context, Error};
+use std::path::PathBuf;
 
-use dataplane::{DataplaneList, Dataplane};
+use dataplane::{Dataplane, DataplaneList};
 
 mod dataplane;
 
@@ -9,9 +9,8 @@ fn main() -> Result<(), Error> {
     Dataplane::create_template_service().context("Failed to create dataplane service template")?;
 
     let dp_filename = "/etc/dataplanes.yaml";
-    let dp_file = File::open(dp_filename).context(format!("Failed to open file {dp_filename}"))?;
-    let dataplane_list: DataplaneList = serde_yaml::from_reader(dp_file).context("Failed to parse dataplanes from YAML")?;
-    
+    let dataplane_list = DataplaneList::from_file(&PathBuf::from(dp_filename))?;
+
     for dp in dataplane_list.dataplanes {
         dp.enable_now()?;
         println!("{dp:?}");
