@@ -1,3 +1,4 @@
+use crate::pod::Pod;
 use anyhow::{Context, Error};
 use serde_derive::Deserialize;
 use std::{
@@ -6,18 +7,42 @@ use std::{
     path::{Path, PathBuf},
 };
 
+const DEFAULT_DP_CONFIG_PATH: &str = "/etc/dataplanes.yaml";
+
 #[derive(Debug, Deserialize)]
 pub struct DataplaneList {
     pub dataplanes: Vec<Dataplane>,
 }
 
 impl DataplaneList {
+    pub fn get() -> Result<Self, Error> {
+        DataplaneList::from_file(&PathBuf::from(DEFAULT_DP_CONFIG_PATH))
+    }
+
     pub fn from_file(path: &PathBuf) -> Result<Self, Error> {
         let dp_file =
             File::open(path).context(format!("Failed to open file {}", path.display()))?;
         let list: Self =
             serde_yaml::from_reader(dp_file).context("Failed to parse dataplanes from YAML")?;
         Ok(list)
+    }
+
+    pub fn by_id(&self, id: u32) -> Result<&Dataplane, Error> {
+        let dp = self.dataplanes.iter().find(|dp| dp.id == id);
+        match dp {
+            Some(dp) => Ok(dp),
+            None => Err(Error::msg("Invalid dataplane id")),
+        }
+    }
+
+    pub fn by_name(&self, name: &str) -> Result<&Dataplane, Error> {
+        dbg!(&self.dataplanes);
+        dbg!(name);
+        let dp = self.dataplanes.iter().find(|dp| dp.name == name);
+        match dp {
+            Some(dp) => Ok(dp),
+            None => Err(Error::msg("Invalid dataplane name")),
+        }
     }
 }
 
@@ -88,5 +113,19 @@ impl Dataplane {
             .block_on(enable_systemd_unit_now(&self.name))
             .context("Failed to enable and start dataplane unit")?;
         Ok(())
+    }
+
+    pub fn pod_name(&self) -> String {
+        format!("dp-{}", self.name)
+    }
+
+    pub fn get_pod(&self) -> Result<Pod, Error> {
+        let pod = Pod::get(&self.pod_name()).context("Failed to get pod")?;
+        Ok(pod)
+    }
+
+    pub fn get_or_create_pod(&self) -> Result<Pod, Error> {
+        let pod = Pod::ensure_exists(&self.pod_name()).context("Failed to ensure pod exists")?;
+        Ok(pod)
     }
 }

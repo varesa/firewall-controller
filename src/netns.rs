@@ -1,6 +1,6 @@
 use nix::sched::{setns, CloneFlags};
 use std::fs::File;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, RawFd};
 
 pub struct NetworkNamespace {
     file: File,
@@ -23,5 +23,9 @@ impl NetworkNamespace {
             func()
         });
         thread.join().expect("Failed to join thread")
+    }
+
+    pub fn raw_fd(&self) -> RawFd {
+        self.file.as_raw_fd()
     }
 }

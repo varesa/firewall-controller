@@ -441,8 +441,10 @@ name = "firewall_controller"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "netlink-packet-route",
  "nispor",
  "nix 0.26.2",
+ "rtnetlink",
  "serde",
  "serde_derive",
  "serde_json",
