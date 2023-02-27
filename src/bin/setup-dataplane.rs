@@ -1,43 +1,41 @@
 use anyhow::{Context, Error};
 use firewall_controller::dataplane::{Dataplane, DataplaneList};
+use netlink_packet_route::LinkMessage;
+use rtnetlink::Handle;
 use std::env;
 use zbus::export::futures_util::TryStreamExt;
 
 const HOST_NS_IFACE_NAME: &str = "host0";
 
-async fn connect_dp_to_host(dp: &Dataplane) -> Result<(), Error> {
-    let (connection, handle, _) =
-        rtnetlink::new_connection().context("Failed to get rtnetlink connection")?;
-    tokio::spawn(connection);
-
-    let dp_if_name = format!("dp{}", dp.id);
-
+async fn add_veth(handle: &Handle, name_a: &str, name_b: &str) -> Result<(), Error> {
     handle
         .link()
         .add()
-        .veth(dp_if_name, HOST_NS_IFACE_NAME.into())
+        .veth(name_a.into(), name_b.into())
         .execute()
         .await
         .context("Failed to add link")?;
+    Ok(())
+}
 
-    let veth_dp_end = handle
+async fn get_link(handle: &Handle, name: &str) -> Result<LinkMessage, Error> {
+    handle
         .link()
         .get()
-        .match_name(HOST_NS_IFACE_NAME.into())
+        .match_name(name.into())
         .execute()
         .try_next()
         .await
         .context("Failed to list links")?
         .ok_or_else(|| {
-            return Error::msg(format!(
-                "Could not find link with name {}",
-                HOST_NS_IFACE_NAME
-            ));
-        })?;
+            return Error::msg(format!("Could not find link with name {}", name));
+        })
+}
 
+async fn set_link_netns(handle: &Handle, index: u32, dp: &Dataplane) -> Result<(), Error> {
     handle
         .link()
-        .set(veth_dp_end.header.index)
+        .set(index)
         .setns_by_fd(
             dp.get_pod()
                 .context("Failed to get pod")?
@@ -50,6 +48,47 @@ async fn connect_dp_to_host(dp: &Dataplane) -> Result<(), Error> {
         .execute()
         .await
         .context("Failed to switch netns")?;
+    Ok(())
+}
+
+async fn add_link_altname(handle: &Handle, index: u32, altname: &str) -> Result<(), Error> {
+    handle
+        .link()
+        .property_add(index)
+        .alt_ifname(&[altname])
+        .execute()
+        .await
+        .context("Failed to add if altname")?;
+    Ok(())
+}
+
+async fn connect_dp_to_host(dp: &Dataplane) -> Result<(), Error> {
+    let (connection, handle, _) =
+        rtnetlink::new_connection().context("Failed to get rtnetlink connection")?;
+    tokio::spawn(connection);
+
+    let dp_if_name = format!("dp{}", dp.id);
+    add_veth(&handle, &dp_if_name, HOST_NS_IFACE_NAME)
+        .await
+        .context("Failed to create veth pair")?;
+
+    let veth_dp_end = get_link(&handle, HOST_NS_IFACE_NAME)
+        .await
+        .context("Failed to get DP link")?;
+    let veth_host_end = get_link(&handle, &dp_if_name)
+        .await
+        .context("Failed to get host link")?;
+
+    set_link_netns(&handle, veth_dp_end.header.index, dp)
+        .await
+        .context("Failed to set veth netns to DP")?;
+    add_link_altname(
+        &handle,
+        veth_host_end.header.index,
+        &format!("dp-{}", &dp.name),
+    )
+    .await
+    .context("Failed to add DP name as altname to veth")?;
 
     Ok(())
 }
